@@ -2,7 +2,7 @@
 
 A Streamlit web app for generating QR code labels and enhanced PDF reports for tree inventory datasets.
 
-Live app: [treescan.streamlit.app](https://treescan.streamlit.app)
+Live app: [smarttree.streamlit.app](https://smarttree.streamlit.app/)
 
 ---
 
