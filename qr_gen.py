@@ -90,29 +90,33 @@ def _read_rows(file_bytes: bytes, filename: str) -> list[dict]:
 
 def process_csv(
     csv_bytes: bytes, base_url: str, fmt: str, filename: str = "data.csv", on_progress=None
-) -> tuple[bytes, list[str]]:
+) -> tuple[bytes, list[str], list[str], list[str]]:
     ext      = "jpg" if fmt == "JPEG" else "png"
     base_url = base_url.rstrip("/")
     rows     = _read_rows(csv_bytes, filename)
     total    = len(rows)
     out_buf  = io.BytesIO()
-    failed: list[str] = []
+    failed_no_sno:        list[str] = []
+    failed_empty_vern:    list[str] = []
+    failed_other:         list[str] = []
 
     with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as zout:
         for i, row in enumerate(rows):
             s_no = row.get("S_No_", "").strip()
             if not s_no:
-                failed.append(f"(row {i + 2})")
+                failed_no_sno.append(f"row {i + 2}")
+            elif not row.get("Vernacular", "").strip():
+                failed_empty_vern.append(s_no)
             else:
                 try:
-                    tree_name = english_from_vernacular(row.get("Vernacular", "").strip())
+                    tree_name = english_from_vernacular(row["Vernacular"].strip())
                     url       = f"{base_url}/{s_no}.pdf"
                     img       = make_qr_card(url, tree_name, s_no)
                     zout.writestr(f"{s_no}.{ext}", _img_to_bytes(img, fmt))
                 except Exception:
-                    failed.append(s_no)
+                    failed_other.append(s_no)
             if on_progress:
                 on_progress(i + 1, total)
 
     out_buf.seek(0)
-    return out_buf.read(), failed
+    return out_buf.read(), failed_no_sno, failed_empty_vern, failed_other
