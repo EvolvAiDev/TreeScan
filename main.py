@@ -95,9 +95,10 @@ if go:
                     qr_total[0] = total
                     bar.progress(done / total, text=f"Generated {done} of {total} QR codes")
 
-                result, failed_qr = process_csv(upload.getvalue(), base_url.strip(), save_fmt, upload.name, on_progress=on_qr_progress)
+                result, failed_no_sno, failed_empty_vern, failed_other = process_csv(upload.getvalue(), base_url.strip(), save_fmt, upload.name, on_progress=on_qr_progress)
                 bar.empty()
-                n_success = qr_total[0] - len(failed_qr)
+                n_failed  = len(failed_no_sno) + len(failed_empty_vern) + len(failed_other)
+                n_success = qr_total[0] - n_failed
                 st.success(f"Successfully generated {n_success} QR code{'s' if n_success != 1 else ''}!")
                 st.download_button(
                     "Download QR Codes ZIP",
@@ -106,17 +107,22 @@ if go:
                     mime="application/zip",
                     use_container_width=True,
                 )
-                n_failed = len(failed_qr)
                 expander_label = (
                     f"Summary — {n_failed} record(s) could not be processed"
                     if n_failed else "Summary — All records processed successfully"
                 )
                 with st.expander(expander_label):
-                    if failed_qr:
-                        st.markdown("The following **S\\_No\\_** records were skipped:")
-                        st.markdown("\n".join(f"- {s}" for s in failed_qr))
-                    else:
+                    if not n_failed:
                         st.write("All records were processed successfully.")
+                    if failed_empty_vern:
+                        st.markdown("**QR not generated because of empty Vernacular column:**")
+                        st.markdown("\n".join(f"- {s}" for s in failed_empty_vern))
+                    if failed_no_sno:
+                        st.markdown("**QR not generated because of missing S\\_No\\_:**")
+                        st.markdown("\n".join(f"- {s}" for s in failed_no_sno))
+                    if failed_other:
+                        st.markdown("**QR not generated because of unexpected error:**")
+                        st.markdown("\n".join(f"- {s}" for s in failed_other))
             else:
                 pdf_total = [0]
 
