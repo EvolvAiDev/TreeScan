@@ -45,6 +45,62 @@ def english_from_vernacular(vernacular: str) -> str:
     return vernacular.strip()
 
 
+def parse_names(vernacular: str) -> tuple[str, str]:
+    """Extract (english_name, hindi_name) from a vernacular string.
+
+    Handles formats like:
+      नीम (Neem)
+      वायविडंग (झाड़ी), आंवला  Indian gooseberry
+      सिंदूरी (हरा) (Annatto)
+      Ficus benghalensis
+    """
+    vernacular = vernacular.strip()
+    if not vernacular:
+        return "", ""
+
+    def _has_deva(text: str) -> bool:
+        return any('ऀ' <= ch <= 'ॿ' for ch in text)
+
+    # No Devanagari at all → purely English
+    if not _has_deva(vernacular):
+        return vernacular, ""
+
+    # Exclusive end of the last Devanagari-containing segment:
+    # start at one-past the last Devanagari char, then advance to the
+    # closing ) if that char sits inside a parenthesised group.
+    raw_end = max(i for i, ch in enumerate(vernacular) if 'ऀ' <= ch <= 'ॿ') + 1
+    last_deva_end = raw_end
+    for m in re.finditer(r'\([^)]*\)', vernacular):
+        if _has_deva(m.group()) and m.start() <= raw_end - 1 < m.end():
+            last_deva_end = m.end()
+
+    # 1. Trailing unparenthesised Latin text after last Devanagari segment.
+    after = vernacular[last_deva_end:].strip().lstrip(',').strip()
+    after_no_parens = re.sub(r'\([^)]*\)', '', after).strip().lstrip(',').strip()
+    english_trailing = after_no_parens if after_no_parens and not _has_deva(after_no_parens) else ""
+
+    # 2. Last Latin parenthesised group (fallback when no plain trailing text).
+    last_latin_paren = None
+    if not english_trailing:
+        for m in re.finditer(r'\(([^)]+)\)', vernacular):
+            inner = m.group(1).strip()
+            if inner and not _has_deva(inner) and not inner.isdigit():
+                last_latin_paren = m
+
+    english = english_trailing or (last_latin_paren.group(1).strip() if last_latin_paren else "")
+
+    # Build Hindi by removing the English portion.
+    if english_trailing:
+        hindi_str = vernacular[:last_deva_end].rstrip(', \t').strip()
+    elif last_latin_paren:
+        hindi_str = (vernacular[:last_latin_paren.start()] + vernacular[last_latin_paren.end():]).strip()
+    else:
+        hindi_str = vernacular
+
+    hindi = hindi_str if _has_deva(hindi_str) else ""
+    return english, hindi
+
+
 def split_script_runs(text: str) -> list[tuple[str, bool]]:
     # Splits mixed text into contiguous Devanagari / Latin segments
     if not text:

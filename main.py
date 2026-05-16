@@ -115,7 +115,8 @@ else:
     csv_up = st.file_uploader("XLSX or CSV file *", type=["xlsx", "csv"])
     if csv_up is not None:
         st.caption(f"{_count_records(csv_up)} Records found.")
-    zip_up = st.file_uploader("Input PDF Zip *", type=["zip"])
+    zip_type = st.radio("ZIP contains", ["PDFs", "Images (JPEG / PNG)"], horizontal=True)
+    zip_up = st.file_uploader("Input ZIP *", type=["zip"])
     if zip_up is not None:
         st.caption(f"{_count_zip_files(zip_up)} Files found.")
     upload = None
@@ -133,9 +134,10 @@ with st.form("main_form"):
             )
         fmt = st.radio("Output format", ["PNG", "JPG"], horizontal=True)
     else:
-        st.caption(
-            "Each PDF in the ZIP must be named `<S_No_>.pdf` — e.g. `1.pdf`, `2.pdf`."
-        )
+        if zip_type == "PDFs":
+            st.caption("Each PDF in the ZIP must be named `<S_No_>.pdf` — e.g. `1.pdf`, `2.pdf`.")
+        else:
+            st.caption("Each image in the ZIP must be named `<S_No_>.<ext>` — e.g. `1.jpg`, `2.png`.")
         fmt = "PNG"
 
     label = "Generate QR Codes" if mode == "QR Generation" else "Generate Output PDFs"
@@ -152,7 +154,7 @@ if go:
         if csv_up is None:
             errors.append("Please upload an XLSX or CSV file.")
         if zip_up is None:
-            errors.append("Please upload a ZIP of PDFs.")
+            errors.append("Please upload a ZIP file.")
 
     if errors:
         for e in errors:
@@ -189,7 +191,11 @@ if go:
                     pdf_total[0] = total
                     bar.progress(done / total, text=f"Processed {done} of {total} PDFs")
 
-                result, pdf_not_in_xlsx, xlsx_not_in_pdf = process_pdf_zip(zip_up.getvalue(), csv_up.getvalue(), csv_up.name, on_progress=on_pdf_progress)
+                result, pdf_not_in_xlsx, xlsx_not_in_pdf = process_pdf_zip(
+                    zip_up.getvalue(), csv_up.getvalue(), csv_up.name,
+                    on_progress=on_pdf_progress,
+                    zip_type="pdf" if zip_type == "PDFs" else "images",
+                )
                 bar.empty()
                 st.session_state["result"] = {
                     "type": "pdf",
@@ -223,7 +229,7 @@ if res and res["type"] == "qr" and mode == "QR Generation":
         if not n_failed:
             st.write("All records were processed successfully.")
         if res["failed_empty_vern"]:
-            st.markdown("**QR not generated because of empty Vernacular column:**")
+            st.markdown("**QR not generated — no tree name found (neither English nor Hindi):**")
             st.markdown("\n".join(f"- {s}" for s in res["failed_empty_vern"]))
         if res["failed_no_sno"]:
             st.markdown("**QR not generated because of missing S\\_No\\_:**")

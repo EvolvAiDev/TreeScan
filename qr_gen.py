@@ -10,10 +10,13 @@ from PIL import Image, ImageDraw
 from constants import (
     TEMPLATE_PATH, TEXT_COLOR, QR_CX,
     QR_BOX_X1, QR_BOX_Y1, QR_BOX_X2, QR_BOX_Y2,
-    NUM_Y1, NUM_Y2, NAME_Y1, NAME_Y2,
+    NUM_Y1, NUM_Y2,
+    NAME_Y1, NAME_Y2,
+    ENG_NAME_Y1, ENG_NAME_Y2,
+    HINDI_NAME_Y1, HINDI_NAME_Y2,
     SERIF_FONT, DEVA_FONT,
 )
-from drawing import fit_and_draw, has_devanagari, english_from_vernacular
+from drawing import fit_and_draw, parse_names
 
 
 @lru_cache(maxsize=1)
@@ -21,7 +24,12 @@ def _template() -> Image.Image:
     return Image.open(TEMPLATE_PATH).convert("RGB")
 
 
-def make_qr_card(url: str, tree_name: str = "", tree_number: str = "") -> Image.Image:
+def make_qr_card(
+    url: str,
+    english_name: str = "",
+    hindi_name: str = "",
+    tree_number: str = "",
+) -> Image.Image:
     qr = segno.make(url, error="h")
     buf = io.BytesIO()
     qr.save(buf, kind="png", scale=10, border=2, dark="#000000", light="#ffffff")
@@ -30,7 +38,7 @@ def make_qr_card(url: str, tree_name: str = "", tree_number: str = "") -> Image.
 
     box_w   = QR_BOX_X2 - QR_BOX_X1
     box_h   = QR_BOX_Y2 - QR_BOX_Y1
-    pad     = int(min(box_w, box_h) * 0.10)
+    pad     = 20
     qr_size = min(box_w - 2 * pad, box_h - 2 * pad)
 
     canvas = _template().copy()
@@ -51,16 +59,43 @@ def make_qr_card(url: str, tree_name: str = "", tree_number: str = "") -> Image.
             color=TEXT_COLOR,
         )
 
-    if tree_name.strip():
-        zone_h    = NAME_Y2 - NAME_Y1
-        name_font = DEVA_FONT if has_devanagari(tree_name) else SERIF_FONT
+    eng = english_name.strip()
+    hin = hindi_name.strip()
+
+    if eng and hin:
+        eng_h = ENG_NAME_Y2 - ENG_NAME_Y1
         fit_and_draw(
-            draw, tree_name.strip(),
+            draw, eng,
+            cx=QR_CX, cy=(ENG_NAME_Y1 + ENG_NAME_Y2) // 2,
+            max_w=int(canvas.width * 0.62), max_h=int(eng_h * 0.80),
+            start_size=int(eng_h * 0.75),
+            color=TEXT_COLOR, font_path=SERIF_FONT,
+        )
+        hin_h = HINDI_NAME_Y2 - HINDI_NAME_Y1
+        fit_and_draw(
+            draw, hin,
+            cx=QR_CX, cy=(HINDI_NAME_Y1 + HINDI_NAME_Y2) // 2,
+            max_w=int(canvas.width * 0.62), max_h=int(hin_h * 0.75),
+            start_size=int(hin_h * 0.70),
+            color=TEXT_COLOR, font_path=DEVA_FONT,
+        )
+    elif eng:
+        zone_h = NAME_Y2 - NAME_Y1
+        fit_and_draw(
+            draw, eng,
             cx=QR_CX, cy=(NAME_Y1 + NAME_Y2) // 2,
             max_w=int(canvas.width * 0.62), max_h=int(zone_h * 0.70),
             start_size=int(zone_h * 0.65),
-            color=TEXT_COLOR,
-            font_path=name_font,
+            color=TEXT_COLOR, font_path=SERIF_FONT,
+        )
+    elif hin:
+        zone_h = NAME_Y2 - NAME_Y1
+        fit_and_draw(
+            draw, hin,
+            cx=QR_CX, cy=(NAME_Y1 + NAME_Y2) // 2,
+            max_w=int(canvas.width * 0.62), max_h=int(zone_h * 0.70),
+            start_size=int(zone_h * 0.65),
+            color=TEXT_COLOR, font_path=DEVA_FONT,
         )
 
     return canvas
@@ -105,13 +140,16 @@ def process_csv(
             s_no = row.get("S_No_", "").strip()
             if not s_no:
                 failed_no_sno.append(f"row {i + 2}")
-            elif not row.get("Vernacular", "").strip():
-                failed_empty_vern.append(s_no)
             else:
+                eng, hin = parse_names(row.get("Vernacular", ""))
+                if not eng and not hin:
+                    failed_empty_vern.append(s_no)
+                    if on_progress:
+                        on_progress(i + 1, total)
+                    continue
                 try:
-                    tree_name = english_from_vernacular(row["Vernacular"].strip())
-                    url       = f"{base_url}/{s_no}.pdf"
-                    img       = make_qr_card(url, tree_name, s_no)
+                    url = f"{base_url}/{s_no}.pdf"
+                    img = make_qr_card(url, eng, hin, s_no)
                     zout.writestr(f"{s_no}.{ext}", _img_to_bytes(img, fmt))
                 except Exception:
                     failed_other.append(s_no)
