@@ -74,7 +74,7 @@ def _load_header(width: int) -> Image.Image:
 @lru_cache(maxsize=4)
 def _load_footer(width: int) -> Image.Image:
     img = Image.open(FOOTER_PATH).convert("RGB")
-    img = img.crop((0, 155, img.width, img.height))
+    img = img.crop((0, 100, img.width, img.height))
     return img.resize((width, int(width * img.height / img.width)), Image.LANCZOS)
 
 
@@ -89,17 +89,13 @@ def _img_to_pdf_bytes(img_bytes: bytes) -> bytes:
     return buf.read()
 
 
-def _pdf_to_images(pdf_bytes: bytes, width: int,
-                   skip_footer_crop: bool = False) -> list[Image.Image]:
+def _pdf_to_images(pdf_bytes: bytes, width: int) -> list[Image.Image]:
     doc    = fitz.open(stream=pdf_bytes, filetype="pdf")
     images = []
     for page in doc:
         scale = width / page.rect.width
         pix   = page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False)
-        img   = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        if not skip_footer_crop:
-            img = img.crop((0, 0, img.width, img.height - int(img.height * 0.07)))
-        images.append(img)
+        images.append(Image.frombytes("RGB", [pix.width, pix.height], pix.samples))
     doc.close()
     return images
 
@@ -146,22 +142,23 @@ def _render_info_section(row: dict, width: int) -> Image.Image:
     # Layout constants
     SEC_PAD_H    = 20    # left/right padding inside the section
     SEC_PAD_TOP  = 22    # top padding above heading
-    SEC_PAD_BOT  = 5    # bottom padding below content
-    HEADING_H    = 62    # increased to fit larger title
-    HEAD_GAP     = 24    # gap between heading and column content
+    SEC_PAD_BOT  = 5     # bottom padding below content
+    HEADING_H    = 70    # scaled ×(35/31) from 62
+    HEAD_GAP     = 27    # scaled ×(35/31) from 24
     COL_GAP      = 52    # horizontal gap between adjacent columns (divider centred here)
-    ICON_DIAM    = 50    # diameter of each icon circle
-    ICON_SZ      = 28    # SVG rasterise size (px)
-    ICON_TXT_GAP = 16    # gap from circle right edge to text block
-    LABEL_VAL_GAP= 6     # gap between label line and first value line
-    ITEM_GAP     = 36    # uniform gap between every row in the col-1 grid
-    H_DIV_INSET  = 12   # white-space inset on each side of the horizontal divider
-    ORN_SZ       = 25    # ornament leaf icon size
+    ICON_DIAM    = 64    # scaled ×1.3 from 50 (even for clean halving)
+    ICON_SZ      = 36    # scaled ×1.3 from 28
+    ICON_TXT_GAP = 21    # scaled ×1.3 from 16
+    LABEL_VAL_GAP= 8     # scaled ×1.3 from 6
+    ITEM_GAP     = 47    # scaled ×1.3 from 36
+    H_DIV_INSET  = 16    # scaled ×1.3 from 12
+    HDIV_MARGIN  = 28    # gap from horizontal divider down to second-row items in cols 2/3
+    ORN_SZ       = 28    # scaled ×(35/31) from 25
     LETTER_SPC   = 4     # extra px between heading characters
 
-    LABEL_SZ = 15
-    VALUE_SZ = 19
-    TITLE_SZ = 31    # +30% from 24
+    LABEL_SZ = 26    # +30% from 20
+    VALUE_SZ = 25    # +30% from 25
+    TITLE_SZ = 35    # +30% from 31
 
     label_font = get_font(LABEL_SZ, TABLE_FONT)
     value_font = get_font(VALUE_SZ, SERIF_FONT)
@@ -227,13 +224,15 @@ def _render_info_section(row: dict, width: int) -> Image.Image:
     max_col_h = col1_h
     for c in range(1, len(_COLUMNS)):
         for ri, (_, _, _, ih) in enumerate(col_items[c]):
-            ref_r = min(ri * 2, n_rows - 1)
-            bot = _rel_centers[ref_r] + ih // 2
+            if ri == 0:
+                bot = _rel_centers[0] + ih // 2
+            else:
+                bot = _rel_centers[1] + HDIV_MARGIN + ih
             max_col_h = max(max_col_h, bot)
 
     # ── Canvas ────────────────────────────────────────────────────────────────
     section_h = SEC_PAD_TOP + HEADING_H + HEAD_GAP + max_col_h + SEC_PAD_BOT
-    canvas = Image.new("RGB", (width, section_h), (255, 255, 255))
+    canvas = Image.new("RGB", (width, section_h), (233, 228, 222))
     draw   = ImageDraw.Draw(canvas)
 
     # ── Heading ───────────────────────────────────────────────────────────────
@@ -279,14 +278,14 @@ def _render_info_section(row: dict, width: int) -> Image.Image:
 
     has_h_div = n_rows > 1 and any(len(col_items[c]) > 1 for c in range(1, len(_COLUMNS)))
     if has_h_div:
-        hdiv_y = col1_centers[1]          # centre of the Vernacular (middle) row
+        hdiv_y = col1_centers[1] - 5      # shifted 5 px above Vernacular centre
         div1_x = col_x[1] - COL_GAP // 2  # vertical divider between col1 & col2
         div2_x = col_x[2] - COL_GAP // 2  # vertical divider between col2 & col3
         # Separate padded line for each right-hand column
         draw.line([(div1_x + H_DIV_INSET, hdiv_y), (div2_x - H_DIV_INSET, hdiv_y)],
-                  fill=_DIV_COLOR, width=1)
+                  fill=_DIV_COLOR, width=2)
         draw.line([(div2_x + H_DIV_INSET, hdiv_y), (width - SEC_PAD_H - H_DIV_INSET, hdiv_y)],
-                  fill=_DIV_COLOR, width=1)
+                  fill=_DIV_COLOR, width=2)
 
     # ── Column content ────────────────────────────────────────────────────────
     for col_idx, items in enumerate(col_items):
@@ -303,11 +302,16 @@ def _render_info_section(row: dict, width: int) -> Image.Image:
                 rh       = row_heights[r]
                 text_top = content_top + row_y[r] + (rh - text_block_h) // 2
             else:
-                # Cols 2/3: item-0 → row-0 centre (S.No level)
-                #           item-1 → row-2 centre (Scientific level)
-                ref_r    = r * 2
-                icon_cy  = col1_centers[min(ref_r, n_rows - 1)]
-                text_top = icon_cy - text_block_h // 2
+                if r == 0:
+                    icon_cy  = col1_centers[0]
+                    text_top = icon_cy - text_block_h // 2
+                else:
+                    # item-1: align just below the horizontal divider
+                    text_top = col1_centers[1] - 5 + HDIV_MARGIN
+                    # cap icon centering to max 2 value-lines so long wrapped
+                    # text (e.g. Remark) doesn't push the circle too far down
+                    cap_h   = lbl_h + LABEL_VAL_GAP + 2 * val_h
+                    icon_cy = text_top + max(ICON_DIAM, min(text_block_h, cap_h)) // 2
 
             icon = _load_svg_icon(svg_file, ICON_SZ,
                                   stroke_color=_FOREST_GREEN, fill_color=_ICON_FILL)
@@ -330,27 +334,33 @@ def _render_info_section(row: dict, width: int) -> Image.Image:
 
 
 # ── PDF assembler ─────────────────────────────────────────────────────────────
-def build_tree_pdf(pdf_bytes: bytes, row: dict,
-                   skip_footer_crop: bool = False) -> bytes:
+def build_tree_pdf(content_bytes: bytes, row: dict, is_image: bool = False) -> bytes:
     width  = PAGE_W
     margin = (PAGE_W - 1160) // 2
 
     info_img    = _render_info_section(row, width - 2 * margin)
-    info_canvas = Image.new("RGB", (width, info_img.height), "white")
+    info_canvas = Image.new("RGB", (width, info_img.height), (233, 228, 222))
     info_canvas.paste(info_img, (margin, 0))
 
-    spacer = Image.new("RGB", (width, 12), "white")
+    spacer = Image.new("RGB", (width, 1), (233, 228, 222))
     footer = _load_footer(width)
-    parts  = ([_load_header(width), spacer, info_canvas]
-              + _pdf_to_images(pdf_bytes, width, skip_footer_crop))
+
+    if is_image:
+        src = Image.open(io.BytesIO(content_bytes)).convert("RGB")
+        h   = int(width * src.height / src.width)
+        content_imgs = [src.resize((width, h), Image.LANCZOS)]
+    else:
+        content_imgs = _pdf_to_images(content_bytes, width)
+
+    parts  = ([_load_header(width), spacer, info_canvas] + content_imgs)
 
     body_h = sum(p.height for p in parts)
-    canvas = Image.new("RGB", (width, body_h + footer.height - 5), "white")
+    canvas = Image.new("RGB", (width, body_h + footer.height), "white")
     y = 0
     for p in parts:
         canvas.paste(p, (0, y))
         y += p.height
-    canvas.paste(footer, (0, body_h - 5))
+    canvas.paste(footer, (0, body_h))
 
     buf = io.BytesIO()
     canvas.save(buf, format="PDF", resolution=150)
@@ -405,10 +415,9 @@ def process_pdf_zip(
         for i, name in enumerate(matched):
             s_no      = Path(name).stem.strip()
             raw_bytes = in_zip.read(name)
-            pdf_bytes = _img_to_pdf_bytes(raw_bytes) if is_images else raw_bytes
             out_zip.writestr(
                 f"{s_no}.pdf",
-                build_tree_pdf(pdf_bytes, rows[s_no], skip_footer_crop=is_images),
+                build_tree_pdf(raw_bytes, rows[s_no], is_image=is_images),
             )
             if on_progress:
                 on_progress(i + 1, total)

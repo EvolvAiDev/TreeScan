@@ -115,7 +115,7 @@ else:
     csv_up = st.file_uploader("XLSX or CSV file *", type=["xlsx", "csv"])
     if csv_up is not None:
         st.caption(f"{_count_records(csv_up)} Records found.")
-    zip_type = st.radio("ZIP contains", ["PDFs", "Images (JPEG / PNG)"], horizontal=True)
+    zip_type = st.radio("ZIP contains", ["Images (JPEG / PNG)", "PDFs"], horizontal=True)
     zip_up = st.file_uploader("Input ZIP *", type=["zip"])
     if zip_up is not None:
         st.caption(f"{_count_zip_files(zip_up)} Files found.")
