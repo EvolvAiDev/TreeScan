@@ -8,6 +8,7 @@ TABLE_FONT    = BASE / "fonts" / "font.ttf"
 TEMPLATE_PATH = BASE / "template2.png"
 HEADER_PATH   = BASE / "header.png"
 FOOTER_PATH   = BASE / "footer.png"
+SERIF_ITALIC_FONT = BASE / "fonts" / "NotoSerif-Italic.ttf" 
 
 TEXT_COLOR = "#1F3D2E"
 PAGE_W     = 1240  # ~A4 at 150 DPI

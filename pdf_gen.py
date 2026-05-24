@@ -9,7 +9,7 @@ import fitz
 from PIL import Image, ImageDraw
 
 from constants import (
-    SERIF_FONT, DEVA_FONT, TABLE_FONT,
+    SERIF_FONT,  SERIF_ITALIC_FONT, DEVA_FONT, TABLE_FONT,
     HEADER_PATH, FOOTER_PATH, PAGE_W,
 )
 from drawing import (
@@ -164,6 +164,7 @@ def _render_info_section(row: dict, width: int) -> Image.Image:
     value_font = get_font(VALUE_SZ, SERIF_FONT)
     deva_font  = get_font(VALUE_SZ, DEVA_FONT)
     title_font = get_font(TITLE_SZ, TABLE_FONT)
+    scientific_font = get_font(VALUE_SZ, SERIF_ITALIC_FONT)
 
     lbl_asc, lbl_desc = label_font.getmetrics()
     val_asc, val_desc = value_font.getmetrics()
@@ -323,11 +324,12 @@ def _render_info_section(row: dict, width: int) -> Image.Image:
 
             val_top = text_top + lbl_h + LABEL_VAL_GAP
             for line in val_lines:
-                line_asc, _ = line_script_metrics(line, deva_font, value_font)
+                current_font = (scientific_font if label == "Scientific Name" else value_font)
+                line_asc, _ = line_script_metrics(line, deva_font,  current_font,)
                 draw_mixed_line(draw, line, text_x + 1, val_top + line_asc,
-                                deva_font, value_font, _VALUE_COLOR)
+                                deva_font, current_font, _VALUE_COLOR)
                 draw_mixed_line(draw, line, text_x, val_top + line_asc,
-                                deva_font, value_font, _VALUE_COLOR)
+                                deva_font, current_font, _VALUE_COLOR)
                 val_top += val_h + 3
 
     return canvas
