@@ -743,8 +743,8 @@ def make_qr_card(
 
     if remark:
 
-        deva_font = get_font(22, DEVA_FONT)
-        latin_font = get_font(22, SERIF_FONT)
+        deva_font = get_font(32, DEVA_FONT)
+        latin_font = get_font(32, SERIF_FONT)
 
         remark_text = remark.split("(")[-1].replace(")", "").strip()
 
