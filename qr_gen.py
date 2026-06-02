@@ -135,6 +135,7 @@ def make_qr_card(
             start_size=int(hin_h * 0.70),
             color=TEXT_COLOR,
             font_path=DEVA_FONT,
+            canvas=canvas,
         )
 
         # English Second
@@ -182,6 +183,7 @@ def make_qr_card(
             start_size=int(zone_h * 0.65),
             color=TEXT_COLOR,
             font_path=DEVA_FONT,
+            canvas=canvas,
         )
 
     # =========================
