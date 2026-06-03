@@ -327,9 +327,9 @@ def _render_info_section(row: dict, width: int) -> Image.Image:
                 current_font = (scientific_font if label == "Scientific Name" else value_font)
                 line_asc, _ = line_script_metrics(line, deva_font,  current_font,)
                 draw_mixed_line(draw, line, text_x + 1, val_top + line_asc,
-                                deva_font, current_font, _VALUE_COLOR)
+                                deva_font, current_font, _VALUE_COLOR, canvas=canvas)
                 draw_mixed_line(draw, line, text_x, val_top + line_asc,
-                                deva_font, current_font, _VALUE_COLOR)
+                                deva_font, current_font, _VALUE_COLOR, canvas=canvas)
                 val_top += val_h + 3
 
     return canvas

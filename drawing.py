@@ -2,9 +2,10 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import ImageDraw, ImageFont
+import fitz
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
-from constants import SERIF_FONT
+from constants import SERIF_FONT, DEVA_FONT
 
 
 @lru_cache(maxsize=32)
@@ -17,7 +18,19 @@ def measure(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.FreeTypeFont):
     return bb[2] - bb[0], bb[3] - bb[1], bb[0], bb[1]
 
 
-def fit_and_draw(draw, text, cx, cy, max_w, max_h, start_size, color, font_path=SERIF_FONT):
+def fit_and_draw(draw, text, cx, cy, max_w, max_h, start_size, color, font_path=SERIF_FONT, canvas=None):
+    if canvas is not None and any('ऀ' <= ch <= 'ॿ' for ch in text):
+        # Use PyMuPDF for Devanagari along with fitz
+        color_str = color if (isinstance(color, str) and color.startswith("#")) else "#000000"
+        size = start_size
+        img = _render_deva_image(text, max(12, size), color_str)
+        while size >= 12 and (img.width > max_w or img.height > max_h):
+            size -= 2
+            img = _render_deva_image(text, max(12, size), color_str)
+        x = cx - img.width // 2
+        y = cy - img.height // 2
+        canvas.paste(img, (x, y), mask=img.split()[3])
+        return
     # Shrink font size until the text fits inside the given box
     size = start_size
     while size >= 12:
@@ -33,6 +46,48 @@ def fit_and_draw(draw, text, cx, cy, max_w, max_h, start_size, color, font_path=
 
 def has_devanagari(text: str) -> bool:
     return any('ऀ' <= ch <= 'ॿ' for ch in text)
+
+
+_DEVA_RENDER_CACHE: dict[tuple, Image.Image] = {}
+
+
+def _render_deva_image(text: str, font_size: int, color: str) -> Image.Image:
+    """Render Devanagari text via PyMuPDF for correct complex-script shaping.
+        along with the use of fitz for correct placement unconditionally.
+    """
+    key = (text, font_size, color)
+    if key in _DEVA_RENDER_CACHE:
+        return _DEVA_RENDER_CACHE[key]
+
+    page_w = max(800, len(text) * font_size + 100)
+    page_h = int(font_size * 2.5)
+    css = (
+        f"body {{ font-size: {font_size}px; color: black; "
+        f"margin: 0; padding: 0; white-space: nowrap; }}"
+        f" p {{ margin: 0; }}"
+    )
+    doc = fitz.open()
+    page = doc.new_page(width=page_w, height=page_h)
+    page.insert_htmlbox(fitz.Rect(4, 4, page_w - 4, page_h - 4), f"<p>{text}</p>", css=css)
+    pix = page.get_pixmap(alpha=False)
+    doc.close()
+
+    # Build an RGBA image: use inverted grayscale as alpha, fill with target color.
+    gray = Image.frombytes("RGB", [pix.width, pix.height], pix.samples).convert("L")
+    alpha = ImageOps.invert(gray)          # black text → 255, white bg → 0
+
+    if isinstance(color, str) and color.startswith("#") and len(color) == 7:
+        r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+    else:
+        r, g, b = 0, 0, 0
+
+    rgba = Image.new("RGBA", gray.size, (r, g, b, 255))
+    rgba.putalpha(alpha)
+
+    bbox = rgba.getbbox()
+    result = rgba.crop(bbox) if bbox else rgba
+    _DEVA_RENDER_CACHE[key] = result
+    return result
 
 
 def english_from_vernacular(vernacular: str) -> str:
@@ -161,7 +216,14 @@ def line_script_metrics(text: str, deva_font, latin_font) -> tuple[int, int]:
     return ascent, descent
 
 
-def draw_mixed_line(draw, text, x, baseline_y, deva_font, latin_font, color) -> None:
+def draw_mixed_line(draw, text, x, baseline_y, deva_font, latin_font, color, canvas=None) -> None:
+    if canvas is not None and any('ऀ' <= ch <= 'ॿ' for ch in text):
+        color_str = color if (isinstance(color, str) and color.startswith("#")) else "#000000"
+        font_size = deva_font.size
+        img = _render_deva_image(text, font_size, color_str)
+        asc, _ = deva_font.getmetrics()
+        canvas.paste(img, (int(x), int(baseline_y - asc)), mask=img.split()[3])
+        return
     cx = x
     for seg, is_deva in split_script_runs(text):
         font = deva_font if is_deva else latin_font
